@@ -1,114 +1,234 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+import { useEffect, useState, useRef } from "react";
+import { io } from "socket.io-client";
+import CodeSandboxClone from "./CodeEditor";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const socket = io("http://localhost:5000");
 
 export default function Home() {
-  return (
-    <div
-      className={`${geistSans.variable} ${geistMono.variable} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/pages/index.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [statusMessages, setStatusMessages] = useState([]);
+  const [deployedUrl, setDeployedUrl] = useState(null);
+  const [isDeployed, setIsDeployed] = useState(false);
+  const [showStatusPopup, setShowStatusPopup] = useState(false);
+  const textareaRef = useRef(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  useEffect(() => {
+    socket.on("status", (message) => {
+      setStatusMessages((prevMessages) => [
+        ...prevMessages.map((item) => ({
+          ...item,
+          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
+          loading: false,
+        })),
+        { text: message, loading: true },
+      ]);
+    });
+
+    socket.on("error", (message) => {
+      setStatusMessages((prevMessages) => [
+        ...prevMessages.map((item) => ({
+          ...item,
+          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
+          loading: false,
+        })),
+        { text: `❌ ${message}`, loading: false },
+      ]);
+      setLoading(false);
+    });
+
+    socket.on("done", () => {
+      setLoading(false);
+      setStatusMessages((prevMessages) =>
+        prevMessages.map((item) => ({
+          ...item,
+          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
+          loading: false,
+        })),
+      );
+    });
+
+    socket.on("deployed", (url) => {
+      setDeployedUrl(url);
+      setIsDeployed(true);
+      setLoading(false);
+      setStatusMessages((prevMessages) =>
+        prevMessages.map((item) => ({
+          ...item,
+          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
+          loading: false,
+        })),
+        { text: `✅ Deployment done`, loading: false },
+      );
+    });
+
+    return () => {
+      socket.off("status");
+      socket.off("error");
+      socket.off("done");
+      socket.off("deployed");
+    };
+  }, []);
+
+  const handleGenerate = async () => {
+    try {
+      setStatusMessages([]);
+      setLoading(true);
+      if (isDeployed) {
+        setIsDeployed(false);
+        setDeployedUrl(null);
+      }
+      setShowStatusPopup(true);
+      socket.emit("generateProject", input);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
+  const generateAsciiHash = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) % 1000000007;
+    }
+    return hash.toString(16);
+  };
+
+  const LoaderSVG = () => (
+    <svg
+      className="animate-spin h-5 w-5 text-blue-600"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      ></circle>
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      ></path>
+    </svg>
+  );
+
+  const handlePreview = () => {
+    if (deployedUrl) {
+      window.open(deployedUrl, "_blank");
+    }
+  };
+
+  const closeStatusPopup = () => {
+    setShowStatusPopup(false);
+  };
+
+  const handleTextareaChange = (e) => {
+    setInput(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      textareaRef.current.style.maxHeight = "300px";
+    }
+  };
+
+  const handleStatusButtonClick = () => {
+    setShowStatusPopup(true);
+  };
+
+  // if (true) {
+  //   return <CodeSandboxClone owner="skumar1708" repo="app-1740982882661"/>
+  // }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <h1 className="text-2xl font-bold mb-4">Generate Your Web App</h1>
+      {(
+        <textarea
+          ref={textareaRef}
+          className="p-2 border rounded w-1/2 resize-none overflow-y-auto"
+          value={input}
+          onChange={handleTextareaChange}
+          placeholder="Describe your app idea..."
+          style={{ minHeight: "100px" }}
+        />
+      )}
+      <div className="flex mt-4">
+        <button
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+          onClick={handleGenerate}
+          disabled={loading}
+        >
+          {loading ? "Generating..." : isDeployed ? "Regenerate" : "Generate"}
+        </button>
+        {!showStatusPopup && !isDeployed && statusMessages.length > 0 && (
+          <button
+            className="bg-gray-500 text-white px-4 py-2 rounded ml-2"
+            onClick={handleStatusButtonClick}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Status
+          </button>
+        )}
+        {isDeployed && (
+          <button
+            className="bg-green-500 text-white px-4 py-2 rounded ml-2"
+            onClick={handlePreview}
           >
-            Read our docs
-          </a>
+            Preview
+          </button>
+        )}
+      </div>
+
+      {showStatusPopup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center">
+          <div className="relative p-8 bg-white w-1/2 rounded-xl shadow-lg">
+            <button
+              className="absolute top-2 right-2 text-gray-600 hover:text-gray-800"
+              onClick={closeStatusPopup}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            <h2 className="text-lg font-semibold mb-4">Status Messages</h2>
+            <ul className="space-y-1 rounded-xl overflow-hidden divide-y divide-gray-300">
+              {statusMessages.map((item) => (
+                <li
+                  key={generateAsciiHash(item.text)}
+                  className="flex items-center gap-3 transition duration-300"
+                >
+                  {item.loading && <LoaderSVG />}
+                  <span className="font-medium">{item.text}</span>
+                </li>
+              ))}
+            </ul>
+            {isDeployed && (
+              <div className="flex justify-center mt-4">
+                <button
+                  className="bg-green-500 text-white px-4 py-2 rounded"
+                  onClick={handlePreview}
+                >
+                  Preview
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
     </div>
   );
 }
