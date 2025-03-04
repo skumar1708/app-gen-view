@@ -4,7 +4,8 @@ const nextConfig = {
         return [
             {
             source: '/socket.io/:path*',  // Match Socket.IO requests
-            destination: 'http://localhost:5000/socket.io/:path*', // Your server URL
+            // destination: 'http://localhost:5000/socket.io/:path*', // Your server URL
+            destination: `https://app-generator-backend-4oif.vercel.app/socket.io/:path`
             },
         ];
         }
