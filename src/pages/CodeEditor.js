@@ -21,7 +21,7 @@ export default function CodeEditor({ owner, repo }) {
   const editorRef = useRef(null);
   const editorViewRef = useRef(null);
 
-  const token = "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";
+  const token = "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";
   // Load dark mode preference
   useEffect(() => {
     if (typeof window !== "undefined") {

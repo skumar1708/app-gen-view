@@ -1,8 +1,4 @@
 import { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
-import CodeSandboxClone from "./CodeEditor";
-
-const socket = io("http://localhost:5000");
 
 export default function Home() {
   const [input, setInput] = useState("");
@@ -12,109 +8,67 @@ export default function Home() {
   const [isDeployed, setIsDeployed] = useState(false);
   const [showStatusPopup, setShowStatusPopup] = useState(false);
   const textareaRef = useRef(null);
+  const [appName, setAppName] = useState("");
 
-  useEffect(() => {
-    socket.on("status", (message) => {
-      setStatusMessages((prevMessages) => [
-        ...prevMessages.map((item) => ({
-          ...item,
-          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
-          loading: false,
-        })),
-        { text: message, loading: true },
-      ]);
-    });
-
-    socket.on("error", (message) => {
-      setStatusMessages((prevMessages) => [
-        ...prevMessages.map((item) => ({
-          ...item,
-          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
-          loading: false,
-        })),
-        { text: `❌ ${message}`, loading: false },
-      ]);
-      setLoading(false);
-    });
-
-    socket.on("done", () => {
-      setLoading(false);
-      setStatusMessages((prevMessages) =>
-        prevMessages.map((item) => ({
-          ...item,
-          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
-          loading: false,
-        })),
-      );
-    });
-
-    socket.on("deployed", (url) => {
-      setDeployedUrl(url);
-      setIsDeployed(true);
-      setLoading(false);
-      setStatusMessages((prevMessages) =>
-        prevMessages.map((item) => ({
-          ...item,
-          text: `✅ ${item.text.replaceAll("✅", "").replaceAll("🔄", "")}`,
-          loading: false,
-        })),
-        { text: `✅ Deployment done`, loading: false },
-      );
-    });
-
-    return () => {
-      socket.off("status");
-      socket.off("error");
-      socket.off("done");
-      socket.off("deployed");
-    };
-  }, []);
+  const API_BASE_URL = "http://localhost:5000";//"https://app-generator-backend.vercel.app";
 
   const handleGenerate = async () => {
     try {
       setStatusMessages([]);
       setLoading(true);
-      if (isDeployed) {
-        setIsDeployed(false);
-        setDeployedUrl(null);
-      }
+      setIsDeployed(false);
+      setDeployedUrl(null);
       setShowStatusPopup(true);
-      socket.emit("generateProject", input);
+
+      const response = await fetch(`${API_BASE_URL}/generateProject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: input }),
+      });
+
+      if (!response.ok) throw new Error("Failed to start project creation");
+
+      const data = await response.json();
+      setAppName(data.appName);
+
+      checkStatus(data.appName);
     } catch (error) {
       console.error("Error:", error);
+      setStatusMessages([{ text: `❌ Error: ${error.message}`, loading: false }]);
+      setLoading(false);
     }
   };
 
-  const generateAsciiHash = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash * 31 + str.charCodeAt(i)) % 1000000007;
-    }
-    return hash.toString(16);
-  };
+  const checkStatus = async (appName) => {
+    try {
+      let isComplete = false;
+      while (!isComplete) {
+        const response = await fetch(`${API_BASE_URL}/status`);
+        if (!response.ok) throw new Error("Failed to fetch status");
 
-  const LoaderSVG = () => (
-    <svg
-      className="animate-spin h-5 w-5 text-blue-600"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      ></circle>
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      ></path>
-    </svg>
-  );
+        const data = await response.json();
+        const currentStatus = { status: data[appName].status };
+
+        if (currentStatus) {
+          setStatusMessages((prev) => [
+            ...prev.filter((msg) => msg.text !== currentStatus.status),
+            { text: currentStatus.status, loading: true },
+          ]);
+
+          if (currentStatus.status === "deployed") {
+            setDeployedUrl(currentStatus.url);
+            setIsDeployed(true);
+            setLoading(false);
+            isComplete = true;
+          }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 5000)); // Poll every 5s
+      }
+    } catch (error) {
+      console.error("Error checking status:", error);
+    }
+  };
 
   const handlePreview = () => {
     if (deployedUrl) {
@@ -135,93 +89,48 @@ export default function Home() {
     }
   };
 
-  const handleStatusButtonClick = () => {
-    setShowStatusPopup(true);
-  };
-
-  // if (true) {
-  //   return <CodeSandboxClone owner="skumar1708" repo="app-1740982882661"/>
-  // }
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <h1 className="text-2xl font-bold mb-4">Generate Your Web App</h1>
-      {(
-        <textarea
-          ref={textareaRef}
-          className="p-2 border rounded w-1/2 resize-none overflow-y-auto"
-          value={input}
-          onChange={handleTextareaChange}
-          placeholder="Describe your app idea..."
-          style={{ minHeight: "100px" }}
-        />
-      )}
+      <textarea
+        ref={textareaRef}
+        className="p-2 border rounded w-1/2 resize-none overflow-y-auto"
+        value={input}
+        onChange={handleTextareaChange}
+        placeholder="Describe your app idea..."
+        style={{ minHeight: "100px" }}
+      />
       <div className="flex mt-4">
-        <button
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-          onClick={handleGenerate}
-          disabled={loading}
-        >
+        <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={handleGenerate} disabled={loading}>
           {loading ? "Generating..." : isDeployed ? "Regenerate" : "Generate"}
         </button>
-        {!showStatusPopup && !isDeployed && statusMessages.length > 0 && (
-          <button
-            className="bg-gray-500 text-white px-4 py-2 rounded ml-2"
-            onClick={handleStatusButtonClick}
-          >
-            Status
-          </button>
-        )}
         {isDeployed && (
-          <button
-            className="bg-green-500 text-white px-4 py-2 rounded ml-2"
-            onClick={handlePreview}
-          >
+          <button className="bg-green-500 text-white px-4 py-2 rounded ml-2" onClick={handlePreview}>
             Preview
           </button>
         )}
       </div>
 
       {showStatusPopup && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex justify-center items-center">
           <div className="relative p-8 bg-white w-1/2 rounded-xl shadow-lg">
-            <button
-              className="absolute top-2 right-2 text-gray-600 hover:text-gray-800"
-              onClick={closeStatusPopup}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
+            <button className="absolute top-2 right-2 text-gray-600 hover:text-gray-800" onClick={closeStatusPopup}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
             <h2 className="text-lg font-semibold mb-4">Status Messages</h2>
             <ul className="space-y-1 rounded-xl overflow-hidden divide-y divide-gray-300">
-              {statusMessages.map((item) => (
-                <li
-                  key={generateAsciiHash(item.text)}
-                  className="flex items-center gap-3 transition duration-300"
-                >
-                  {item.loading && <LoaderSVG />}
+              {statusMessages.map((item, index) => (
+                <li key={index} className="flex items-center gap-3 transition duration-300">
+                  {item.loading && <span className="animate-spin text-blue-600">↻</span>}
                   <span className="font-medium">{item.text}</span>
                 </li>
               ))}
             </ul>
             {isDeployed && (
               <div className="flex justify-center mt-4">
-                <button
-                  className="bg-green-500 text-white px-4 py-2 rounded"
-                  onClick={handlePreview}
-                >
+                <button className="bg-green-500 text-white px-4 py-2 rounded" onClick={handlePreview}>
                   Preview
                 </button>
               </div>

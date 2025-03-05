@@ -6,7 +6,7 @@ import { Base64 } from 'js-base64';
 import { v4 as uuidv4 } from 'uuid';
 import getPort from 'get-port';
 
-const token = "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";
+const token = "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";
 
 async function handler(req, res) {
   if (req.method !== 'POST') {
